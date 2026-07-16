@@ -7,7 +7,7 @@ This document defines the coding standards, architectural constraints, and stric
 ## 1. Architectural Stack & Constraints
 
 * **Backend Framework**: Django & Django REST Framework (DRF).
-* **Database**: PostgreSQL (Neon).
+* **Database**: PostgreSQL (Aiven for development, Neon for production).
 * **Authentication**: Clerk Authentication (sole authentication provider).
 * **API Documentation**: OpenAPI 3.0 specification generated dynamically via `drf-spectacular`.
 * **API Versioning**: Base path must be `/api/v1/`.
