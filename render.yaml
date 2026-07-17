@@ -3,7 +3,7 @@ services:
     name: learning-app-backend
     env: python
     plan: starter
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt ; python manage.py collectstatic --noinput
     startCommand: gunicorn config.wsgi --log-file -
     envVars:
       - key: DEBUG
