@@ -1,3 +1,4 @@
+
 from rest_framework import permissions
 from courses.models import Course
 
@@ -40,7 +41,7 @@ class IsCourseOwnerOrAdmin(permissions.BasePermission):
             return False
         if request.user.role == 'ADMIN':
             return True
-        # obj may be Course, Module, Lesson, or Resource — resolve up the tree.
+        # obj may be Course, Module, Lesson, Resource, Quiz, Question, Option — resolve up the tree.
         course = _resolve_course(obj)
         if course is None:
             return False
@@ -53,7 +54,7 @@ class IsCourseOwnerOrAdmin(permissions.BasePermission):
 
 class CanAddContentToCourse(permissions.BasePermission):
     """
-    Permits adding new Modules/Lessons to a course that is PUBLISHED
+    Permits adding new Modules/Lessons/Quizzes to a course that is PUBLISHED
     (creators may add but not edit existing structures) or DRAFT (fully editable).
     Admins bypass all restrictions.
     Used as an object-level permission on the parent Course.
@@ -83,6 +84,7 @@ class CanAddContentToCourse(permissions.BasePermission):
 def _resolve_course(obj):
     """Walk up the object hierarchy to find the parent Course."""
     from courses.models import Course, Module, Lesson, Resource
+    from quizzes.models import Quiz, Question, Option
     if isinstance(obj, Course):
         return obj
     if isinstance(obj, Module):
@@ -91,4 +93,10 @@ def _resolve_course(obj):
         return obj.module.course
     if isinstance(obj, Resource):
         return obj.lesson.module.course
+    if isinstance(obj, Quiz):
+        return obj.lesson.module.course
+    if isinstance(obj, Question):
+        return obj.quiz.lesson.module.course
+    if isinstance(obj, Option):
+        return obj.question.quiz.lesson.module.course
     return None

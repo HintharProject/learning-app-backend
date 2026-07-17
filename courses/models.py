@@ -164,3 +164,28 @@ class Resource(models.Model):
 
     def __str__(self):
         return f'{self.title} ({self.type}) — Lesson: {self.lesson_id}'
+
+
+class LessonProgress(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='lesson_progress'
+    )
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.PROTECT,
+        related_name='progress'
+    )
+    video_progress = models.FloatField(default=0.0)
+    completed = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'lesson_progress'
+        ordering = ['-updated_at']
+        unique_together = [('student', 'lesson')]
+
+    def __str__(self):
+        return f'Progress for {self.student.email} on {self.lesson.title} ({"Completed" if self.completed else "In Progress"})'

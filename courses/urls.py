@@ -6,6 +6,7 @@ from courses.views import (
     ModuleDetailViewSet,
     LessonViewSet,
     ResourceViewSet,
+    LessonProgressViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +22,9 @@ router.register(r'lessons', LessonViewSet, basename='lesson')
 
 # /api/v1/resources/{id}/ — PATCH only
 router.register(r'resources', ResourceViewSet, basename='resource')
+
+# /api/v1/lesson-progress/
+router.register(r'lesson-progress', LessonProgressViewSet, basename='lesson-progress')
 
 urlpatterns = [
     # ── Nested routes ──────────────────────────────────────────────────────

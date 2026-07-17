@@ -1,6 +1,7 @@
+
 from rest_framework import serializers
 from django.db import transaction
-from courses.models import Course, Module, Lesson, Resource
+from courses.models import Course, Module, Lesson, Resource, LessonProgress
 
 
 # ── Resource Serializers ──────────────────────────────────────────────────────
@@ -362,3 +363,30 @@ class CourseUpdateSerializer(serializers.ModelSerializer):
                 'Reject the course to return it to Draft.'
             )
         return attrs
+
+
+# ── LessonProgress Serializers ────────────────────────────────────────────────
+
+class LessonProgressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LessonProgress
+        fields = [
+            'id',
+            'student',
+            'lesson',
+            'video_progress',
+            'completed',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'student', 'lesson', 'updated_at']
+
+
+class LessonProgressUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LessonProgress
+        fields = ['video_progress']
+
+    def validate_video_progress(self, value):
+        if value < 0 or value > 1:
+            raise serializers.ValidationError('Video progress must be between 0 and 1.')
+        return value

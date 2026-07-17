@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 
-from courses.models import Course, Module, Lesson, Resource
+from courses.models import Course, Module, Lesson, Resource, LessonProgress
 from courses.serializers import (
     CourseSerializer,
     CourseListSerializer,
@@ -22,6 +22,8 @@ from courses.serializers import (
     ResourceSerializer,
     ResourceCreateSerializer,
     ReorderSerializer,
+    LessonProgressSerializer,
+    LessonProgressUpdateSerializer,
 )
 from courses.permissions import (
     IsAdminOrApprovedCreator,
@@ -580,3 +582,61 @@ class ResourceViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(ResourceSerializer(resource).data)
+
+
+# ── LessonProgressViewSet ───────────────────────────────────────────────────────
+
+@extend_schema_view(
+    list=extend_schema(
+        summary='List lesson progress for a student',
+        description='Returns all lesson progress records for the authenticated student.',
+    ),
+    retrieve=extend_schema(
+        summary='Retrieve lesson progress',
+        description='Get detailed progress for a specific lesson.',
+    ),
+    create=extend_schema(
+        summary='Start a lesson',
+        description='Marks a lesson as started by the student.',
+    ),
+    partial_update=extend_schema(
+        summary='Update lesson progress',
+        description='Mark a lesson as completed, update last accessed time.',
+    ),
+    update=extend_schema(exclude=True),
+    destroy=extend_schema(exclude=True),
+)
+class LessonProgressViewSet(viewsets.ModelViewSet):
+    """
+    Lesson progress tracking:
+    - GET  /lesson-progress/          → list (student's own progress)
+    - GET  /lesson-progress/{id}/     → retrieve
+    - POST /lesson-progress/          → create (start lesson)
+    - PATCH /lesson-progress/{id}/    → partial_update (mark completed, etc.)
+    """
+    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return LessonProgress.objects.none()
+        if user.role == 'ADMIN':
+            return LessonProgress.objects.all().select_related('student', 'lesson__module__course')
+        # Only students can have progress
+        return LessonProgress.objects.filter(student=user).select_related('student', 'lesson__module__course')
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'create', 'partial_update'):
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated()]
+
+    def get_serializer_class(self):
+        if self.action == 'partial_update':
+            return LessonProgressUpdateSerializer
+        return LessonProgressSerializer
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role != 'STUDENT':
+            raise PermissionDenied('Only students can track lesson progress.')
+        serializer.save(student=user)
