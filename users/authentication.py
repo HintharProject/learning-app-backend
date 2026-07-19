@@ -2,6 +2,10 @@ import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import authentication, exceptions
+import logging
+import requests
+
+logger = logging.getLogger(__name__)
 
 class ClerkAuthentication(authentication.BaseAuthentication):
     def authenticate(self, request):
@@ -49,19 +53,69 @@ class ClerkAuthentication(authentication.BaseAuthentication):
 
         User = get_user_model()
         try:
-            user, created = User.objects.get_or_create(
-                clerk_id=sub,
-                defaults={
-                    'email': email,
-                    'full_name': full_name,
-                    'avatar_url': avatar_url,
-                }
-            )
-            if not created:
-                user.email = email
-                user.full_name = full_name
-                user.avatar_url = avatar_url
-                user.save()
+            user = User.objects.filter(clerk_id=sub).first()
+            
+            # If user not found and email is missing from JWT, attempt to fetch from Clerk API
+            if not user and not email:
+                clerk_secret = getattr(settings, 'CLERK_SECRET_KEY', None)
+                if clerk_secret:
+                    try:
+                        response = requests.get(
+                            f"https://api.clerk.com/v1/users/{sub}",
+                            headers={"Authorization": f"Bearer {clerk_secret}"}
+                        )
+                        if response.status_code == 200:
+                            clerk_user = response.json()
+                            email_addresses = clerk_user.get('email_addresses', [])
+                            if email_addresses:
+                                primary_id = clerk_user.get('primary_email_address_id')
+                                for ea in email_addresses:
+                                    if ea.get('id') == primary_id:
+                                        email = ea.get('email_address', '')
+                                        break
+                                if not email:
+                                    email = email_addresses[0].get('email_address', '')
+                            
+                            first_name = clerk_user.get('first_name', '')
+                            last_name = clerk_user.get('last_name', '')
+                            full_name = f"{first_name} {last_name}".strip()
+                            avatar_url = clerk_user.get('profile_image_url', '')
+                    except Exception as e:
+                        logger.error(f"Failed to fetch user from Clerk API: {e}")
+
+            if not user and email:
+                user = User.objects.filter(email=email).first()
+                if user:
+                    user.clerk_id = sub
+                    user.save()
+
+            if not user:
+                if not email:
+                    raise exceptions.AuthenticationFailed('User not found and email could not be retrieved.')
+                user = User.objects.create_user(
+                    email=email,
+                    clerk_id=sub,
+                    full_name=full_name,
+                    avatar_url=avatar_url,
+                )
+            else:
+                update_fields = []
+                if email and user.email != email:
+                    if not User.objects.filter(email=email).exclude(id=user.id).exists():
+                        user.email = email
+                        update_fields.append('email')
+                
+                if full_name and user.full_name != full_name:
+                    user.full_name = full_name
+                    update_fields.append('full_name')
+                
+                if avatar_url and user.avatar_url != avatar_url:
+                    user.avatar_url = avatar_url
+                    update_fields.append('avatar_url')
+                
+                if update_fields:
+                    user.save(update_fields=update_fields)
+                    
         except Exception as e:
             raise exceptions.AuthenticationFailed(f'Error syncing user: {str(e)}')
 

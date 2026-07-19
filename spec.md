@@ -55,25 +55,13 @@ erDiagram
         string id PK
         string lesson_id FK "→ Lesson(id)"
         text description
+        int passing_percentage
+        json questions "Array of questions with options"
         datetime created_at
         datetime updated_at
     }
 
-    Question {
-        string id PK
-        string quiz_id FK "→ Quiz(id)"
-        text text
-        int order
-        datetime created_at
-    }
 
-    Option {
-        string id PK
-        string question_id FK "→ Question(id)"
-        text text
-        boolean is_correct
-        datetime created_at
-    }
 
     Resource {
         string id PK
@@ -131,15 +119,8 @@ erDiagram
         datetime submitted_at
         int score
         int total_questions
-        datetime created_at
-    }
-
-    StudentQuizAnswer {
-        string id PK
-        string attempt_id FK "→ StudentQuizAttempt(id)"
-        string question_id FK "→ Question(id)"
-        string option_id FK "→ Option(id)"
-        boolean is_correct
+        boolean passed
+        json answers_submitted "Key-value pair of question_id: option_id"
         datetime created_at
     }
 
@@ -149,8 +130,6 @@ erDiagram
     Module ||--o{ Lesson : "contains"
     Lesson ||--o{ Quiz : "has"
     Lesson ||--o{ Resource : "has"
-    Quiz ||--o{ Question : "contains"
-    Question ||--o{ Option : "has"
     User ||--o{ Enrollment : "enrolls in"
     Course ||--o{ Enrollment : "enrolled by"
     User ||--o{ StudyPlan : "owns"
@@ -162,9 +141,6 @@ erDiagram
     Lesson ||--o{ LessonProgress : "has progress"
     User ||--o{ StudentQuizAttempt : "takes"
     Quiz ||--o{ StudentQuizAttempt : "attempted by"
-    StudentQuizAttempt ||--o{ StudentQuizAnswer : "contains answers to"
-    Question ||--o{ StudentQuizAnswer : "answered in"
-    Option ||--o{ StudentQuizAnswer : "selected option"
 ```
 
 ---
@@ -214,8 +190,8 @@ erDiagram
 * **Attempt Lifecycle**:
   * `START` &rarr; `SUBMITTED`.
   * Attempts cannot be resumed. Leaving the quiz abandons the attempt. A new start creates a new attempt.
-* **Answer Editing**:
-  * Answers can be changed until submission. Submitted attempts are immutable.
+* **Bulk Submission**:
+  * Student answers are evaluated against the Quiz JSON in bulk via a single POST request on submission.
 * **Scoring**:
   * Calculated immediately on submission. Stores raw score and total questions (percentage is derived).
 * **Review**:
@@ -335,11 +311,10 @@ Base Path: `/api/v1/`
 
 ### 4. Assessments / Quiz System
 * `GET  /lessons/{lesson_id}/quizzes/` - Retrieve quizzes attached to a lesson. (ADMIN, CREATOR owner, STUDENT)
-* `POST /lessons/{lesson_id}/quizzes/` - Create a quiz. (CREATOR owner, ADMIN)
+* `POST /lessons/{lesson_id}/quizzes/` - Create a quiz (Accepts JSON question array). (CREATOR owner, ADMIN)
 * `PATCH /quizzes/{id}/` - Modify quiz structure. (CREATOR owner, ADMIN)
 * `POST /quizzes/{quiz_id}/attempts/` - Start a quiz attempt. (STUDENT)
-* `PATCH /attempts/{id}/answers/` - Modify answers before submission. (STUDENT)
-* `POST /attempts/{id}/submit/` - Submit attempt and score it. (STUDENT)
+* `POST /attempts/{id}/submit/` - Bulk-submit attempt (JSON answers) and score it. (STUDENT)
 * `GET  /quizzes/{quiz_id}/attempts/` - Review previous attempts. (STUDENT)
 * `GET  /attempts/{id}/` - View attempt details, answers, and score. (STUDENT)
 

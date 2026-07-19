@@ -33,7 +33,7 @@ This document defines the coding standards, architectural constraints, and stric
 ## 3. Data Integrity & Operational Boundaries
 
 * **Immutable Historical Learning Records**:
-  * Records representing progress and history (`Enrollment`, `LessonProgress`, `StudentQuizAttempt`, `StudentQuizAnswer`) must **never** be physically deleted.
+  * Records representing progress and history (`Enrollment`, `LessonProgress`, `StudentQuizAttempt`) must **never** be physically deleted.
   * Soft-delete state changes (using flags like `status_active = False` or state machines) must be used.
   * Database-level cascading deletes (`CASCADE`) are **strictly prohibited** for any model tied directly or indirectly to Historical Learning Records to prevent accidental data loss.
 * **Derived State Principles**:
@@ -48,5 +48,5 @@ This document defines the coding standards, architectural constraints, and stric
 
 * **Standard API Error format**: Use native Django REST Framework (DRF) JSON schemas for validation errors.
 * **API-First Architecture**: Ensure all endpoints are designed with clear input validation and serialization logic. 
-* **Ordering Restraints**: Enforce continuous, unique, and deterministic ordering validations for models using manual ordering (e.g., Modules, Lessons, Questions).
+* **Ordering Restraints**: Enforce continuous, unique, and deterministic ordering validations for models using manual ordering (e.g., Modules, Lessons).
 * **Testing**: Write comprehensive unit/integration tests targeting the serializer validations, state transitions, and custom authorization permissions.

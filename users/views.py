@@ -142,25 +142,45 @@ def clerk_webhook(request):
             last_name = data.get('last_name', '')
             full_name = f"{first_name} {last_name}".strip()
 
-            # Get or create user
-            user, created = User.objects.get_or_create(
-                clerk_id=clerk_id,
-                defaults={
-                    'email': primary_email,
-                    'full_name': full_name,
-                    'avatar_url': profile_image_url,
-                    'role': 'STUDENT',  # Default role is STUDENT
-                    'is_creator_approved': False,
-                    'status_active': True,
-                }
-            )
+            # Get or create user with lazy syncing
+            user = User.objects.filter(clerk_id=clerk_id).first()
+            if not user and primary_email:
+                user = User.objects.filter(email=primary_email).first()
+                if user:
+                    user.clerk_id = clerk_id
+                    user.save()
 
-            if not created:
+            created = False
+            if not user:
+                if primary_email:
+                    try:
+                        user = User.objects.create_user(
+                            email=primary_email,
+                            clerk_id=clerk_id,
+                            full_name=full_name,
+                            avatar_url=profile_image_url,
+                        )
+                        created = True
+                    except Exception as e:
+                        logger.error(f"Error creating user in webhook: {e}")
+            else:
                 # Update user if needed
-                user.email = primary_email
-                user.full_name = full_name
-                user.avatar_url = profile_image_url
-                user.save()
+                update_fields = []
+                if primary_email and user.email != primary_email:
+                    if not User.objects.filter(email=primary_email).exclude(id=user.id).exists():
+                        user.email = primary_email
+                        update_fields.append('email')
+                
+                if full_name and user.full_name != full_name:
+                    user.full_name = full_name
+                    update_fields.append('full_name')
+                
+                if profile_image_url and user.avatar_url != profile_image_url:
+                    user.avatar_url = profile_image_url
+                    update_fields.append('avatar_url')
+                    
+                if update_fields:
+                    user.save(update_fields=update_fields)
 
             logger.info(f"User synced: {clerk_id}, created: {created}")
 

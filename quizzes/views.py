@@ -6,13 +6,10 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
-from quizzes.models import Quiz, Question, Option, StudentQuizAttempt, StudentQuizAnswer
+from quizzes.models import Quiz, StudentQuizAttempt
 from quizzes.serializers import (
     QuizSerializer, QuizCreateSerializer, QuizUpdateSerializer,
-    QuestionSerializer, QuestionCreateSerializer,
-    OptionSerializer, OptionCreateSerializer,
     StudentQuizAttemptSerializer, StudentQuizAttemptCreateSerializer,
-    StudentQuizAnswerSerializer, StudentQuizAnswerUpdateSerializer,
 )
 from courses.permissions import IsAdminOrApprovedCreator, IsCourseOwnerOrAdmin
 from users.permissions import IsStudent
@@ -97,161 +94,6 @@ class QuizViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema_view(
-    list=extend_schema(summary='List questions in a quiz'),
-    create=extend_schema(summary='Create a question'),
-    partial_update=extend_schema(summary='Update a question'),
-)
-class QuestionViewSet(viewsets.ModelViewSet):
-    http_method_names = ['get', 'post', 'patch', 'head', 'options']
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return QuestionCreateSerializer
-        return QuestionSerializer
-
-    def get_permissions(self):
-        if self.action in ['create', 'partial_update']:
-            return [permissions.IsAuthenticated(), IsAdminOrApprovedCreator()]
-        return [permissions.IsAuthenticated()]
-
-    def get_queryset(self):
-        if 'quiz_pk' in self.kwargs:
-            return Question.objects.filter(quiz_id=self.kwargs['quiz_pk'])
-        return Question.objects.all()
-
-    def _get_quiz(self):
-        quiz_pk = self.kwargs.get('quiz_pk')
-        try:
-            return Quiz.objects.select_related('lesson__module__course').get(pk=quiz_pk)
-        except Quiz.DoesNotExist:
-            raise NotFound('Quiz not found.')
-
-    def list(self, request, *args, **kwargs):
-        quiz = self._get_quiz()
-        user = request.user
-        course = quiz.lesson.module.course
-
-        if user.role == 'ADMIN':
-            pass
-        elif user.role == 'CREATOR' and user.is_creator_approved and course.creator_id == user.id:
-            pass
-        elif user.role == 'STUDENT' and course.status in [Course.STATUS_PUBLISHED, Course.STATUS_ARCHIVED]:
-            pass
-        else:
-            raise PermissionDenied()
-
-        return super().list(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        question = self.get_object()
-        user = request.user
-        course = question.quiz.lesson.module.course
-
-        if user.role == 'ADMIN':
-            pass
-        elif user.role == 'CREATOR' and user.is_creator_approved and course.creator_id == user.id:
-            pass
-        elif user.role == 'STUDENT' and course.status in [Course.STATUS_PUBLISHED, Course.STATUS_ARCHIVED]:
-            pass
-        else:
-            raise PermissionDenied()
-
-        return Response(self.get_serializer(question).data)
-
-    def perform_create(self, serializer):
-        quiz = self._get_quiz()
-        course = quiz.lesson.module.course
-        user = self.request.user
-
-        if course.status not in [Course.STATUS_DRAFT, Course.STATUS_PUBLISHED]:
-            raise ValidationError(f'Cannot add questions to {course.status} course.')
-        if user.role == 'CREATOR' and (not user.is_creator_approved or course.creator_id != user.id):
-            raise PermissionDenied()
-        if user.role == 'STUDENT':
-            raise PermissionDenied()
-
-        next_order = Question.objects.filter(quiz=quiz).count() + 1
-        serializer.save(quiz=quiz, order=next_order)
-
-
-@extend_schema_view(
-    list=extend_schema(summary='List options for a question'),
-    create=extend_schema(summary='Create an option'),
-    partial_update=extend_schema(summary='Update an option'),
-)
-class OptionViewSet(viewsets.ModelViewSet):
-    http_method_names = ['get', 'post', 'patch', 'head', 'options']
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return OptionCreateSerializer
-        return OptionSerializer
-
-    def get_permissions(self):
-        if self.action in ['create', 'partial_update']:
-            return [permissions.IsAuthenticated(), IsAdminOrApprovedCreator()]
-        return [permissions.IsAuthenticated()]
-
-    def get_queryset(self):
-        if 'question_pk' in self.kwargs:
-            return Option.objects.filter(question_id=self.kwargs['question_pk'])
-        return Option.objects.all()
-
-    def _get_question(self):
-        question_pk = self.kwargs.get('question_pk')
-        try:
-            return Question.objects.select_related('quiz__lesson__module__course').get(pk=question_pk)
-        except Question.DoesNotExist:
-            raise NotFound('Question not found.')
-
-    def list(self, request, *args, **kwargs):
-        question = self._get_question()
-        user = request.user
-        course = question.quiz.lesson.module.course
-
-        if user.role == 'ADMIN':
-            pass
-        elif user.role == 'CREATOR' and user.is_creator_approved and course.creator_id == user.id:
-            pass
-        elif user.role == 'STUDENT' and course.status in [Course.STATUS_PUBLISHED, Course.STATUS_ARCHIVED]:
-            pass
-        else:
-            raise PermissionDenied()
-
-        return super().list(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        option = self.get_object()
-        user = request.user
-        course = option.question.quiz.lesson.module.course
-
-        if user.role == 'ADMIN':
-            pass
-        elif user.role == 'CREATOR' and user.is_creator_approved and course.creator_id == user.id:
-            pass
-        elif user.role == 'STUDENT' and course.status in [Course.STATUS_PUBLISHED, Course.STATUS_ARCHIVED]:
-            pass
-        else:
-            raise PermissionDenied()
-
-        return Response(self.get_serializer(option).data)
-
-    def perform_create(self, serializer):
-        question = self._get_question()
-        course = question.quiz.lesson.module.course
-        user = self.request.user
-
-        if course.status not in [Course.STATUS_DRAFT, Course.STATUS_PUBLISHED]:
-            raise ValidationError(f'Cannot add options to {course.status} course.')
-        if user.role == 'CREATOR' and (not user.is_creator_approved or course.creator_id != user.id):
-            raise PermissionDenied()
-        if user.role == 'STUDENT':
-            raise PermissionDenied()
-
-        serializer.save(question=question)
-
-
-@extend_schema_view(
     list=extend_schema(
         summary='List quiz attempts',
         description='Get all attempts for a quiz (only for the student or admin).'
@@ -271,12 +113,10 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return StudentQuizAttemptCreateSerializer
-        if self.action == 'update_answers':
-            return StudentQuizAnswerUpdateSerializer
         return StudentQuizAttemptSerializer
 
     def get_permissions(self):
-        if self.action in ['create', 'update_answers', 'submit', 'list', 'retrieve']:
+        if self.action in ['create', 'submit', 'list', 'retrieve']:
             return [permissions.IsAuthenticated(), IsStudent()]
         return [permissions.IsAuthenticated()]
 
@@ -301,15 +141,15 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
         if course.status not in [Course.STATUS_PUBLISHED, Course.STATUS_ARCHIVED]:
             raise PermissionDenied('Quiz is not available yet.')
 
-        # Check enrollment? Maybe we should add that later.
         last_attempt = StudentQuizAttempt.objects.filter(student=user, quiz=quiz).order_by('-attempt_number').first()
         attempt_number = (last_attempt.attempt_number + 1) if last_attempt else 1
 
+        # total_questions is stored for attempt context
         attempt = StudentQuizAttempt.objects.create(
             student=user,
             quiz=quiz,
             attempt_number=attempt_number,
-            total_questions=quiz.questions.count(),
+            total_questions=len(quiz.questions) if isinstance(quiz.questions, list) else 0,
         )
         return Response(
             StudentQuizAttemptSerializer(attempt).data,
@@ -317,45 +157,8 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
         )
 
     @extend_schema(
-        summary='Update answers',
-        description='Add or modify answers for an ongoing attempt.'
-    )
-    @action(detail=True, methods=['patch'], url_path='answers')
-    def update_answers(self, request, pk=None):
-        attempt = self.get_object()
-        if attempt.submitted_at:
-            raise ValidationError('Cannot modify a submitted attempt.')
-
-        # Accept a list of answers? For simplicity, let's accept single answer for now.
-        # Or maybe a list of {question, option}.
-        question_id = request.data.get('question')
-        option_id = request.data.get('option')
-
-        try:
-            question = Question.objects.get(pk=question_id, quiz=attempt.quiz)
-        except Question.DoesNotExist:
-            raise ValidationError('Invalid question for this quiz.')
-
-        try:
-            option = Option.objects.get(pk=option_id, question=question)
-        except Option.DoesNotExist:
-            raise ValidationError('Invalid option for this question.')
-
-        with transaction.atomic():
-            # Delete any existing answer for this question in this attempt
-            StudentQuizAnswer.objects.filter(attempt=attempt, question=question).delete()
-            # Create new answer
-            answer = StudentQuizAnswer.objects.create(
-                attempt=attempt,
-                question=question,
-                option=option,
-                is_correct=option.is_correct,
-            )
-        return Response(StudentQuizAnswerSerializer(answer).data)
-
-    @extend_schema(
         summary='Submit the attempt',
-        description='Finalize the quiz attempt and calculate the score.'
+        description='Finalize the quiz attempt with answers and calculate the score.'
     )
     @action(detail=True, methods=['post'], url_path='submit')
     def submit(self, request, pk=None):
@@ -363,10 +166,35 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
         if attempt.submitted_at:
             raise ValidationError('This attempt has already been submitted.')
 
+        answers_submitted = request.data.get('answers', {})
+        if not isinstance(answers_submitted, dict):
+            raise ValidationError('Answers must be a dictionary of question_id: option_id.')
+
+        quiz_questions = attempt.quiz.questions
+        score = 0
+        total_questions = len(quiz_questions) if isinstance(quiz_questions, list) else 0
+
+        if isinstance(quiz_questions, list):
+            for q in quiz_questions:
+                q_id = str(q.get('id'))
+                submitted_option_id = str(answers_submitted.get(q_id))
+                
+                correct_option = next((opt for opt in q.get('options', []) if opt.get('is_correct')), None)
+                if correct_option and str(correct_option.get('id')) == submitted_option_id:
+                    score += 1
+
+        passed = False
+        if total_questions > 0:
+            percentage = (score / total_questions) * 100
+            passed = percentage >= attempt.quiz.passing_percentage
+        else:
+            passed = True
+
         with transaction.atomic():
-            # Calculate the score
-            score = StudentQuizAnswer.objects.filter(attempt=attempt, is_correct=True).count()
             attempt.score = score
+            attempt.total_questions = total_questions
+            attempt.passed = passed
+            attempt.answers_submitted = answers_submitted
             attempt.submitted_at = transaction.now()
             attempt.save()
 
