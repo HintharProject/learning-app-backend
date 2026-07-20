@@ -134,6 +134,7 @@ CLERK_PUBLISHABLE_KEY = os.getenv('CLERK_PUBLISHABLE_KEY', '')
 CLERK_SECRET_KEY = os.getenv('CLERK_SECRET_KEY', '')
 CLERK_JWT_PEM_PUBLIC_KEY = os.getenv('CLERK_JWT_PEM_PUBLIC_KEY', '').replace(r'\n', '\n')
 CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '')
+CLERK_WEBHOOK_SECRET = os.getenv('CLERK_WEBHOOK_SECRET', '')
 
 
 # Password validation

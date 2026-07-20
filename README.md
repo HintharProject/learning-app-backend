@@ -1,6 +1,6 @@
 # Learning Management System API (LMS Backend)
 
-This is the API-first backend repository for the Learning Management System (LMS) MVP, built using **Django**, **Django REST Framework (DRF)**, **PostgreSQL (Neon)**, and authenticated via **Clerk**.
+This is the API-first backend repository for the Learning Management System (LMS) MVP, built using **Django**, **Django REST Framework (DRF)**, **PostgreSQL (Aiven for test, Neon for production)**, and authenticated via **Clerk**.
 
 ## Overview
 
@@ -15,7 +15,7 @@ For the detailed specifications, please refer to:
 ## Technical Stack
 * **Framework**: Django & Django REST Framework (DRF)
 * **Authentication**: Clerk Integration
-* **Database**: PostgreSQL (Neon Serverless)
+* **Database**: PostgreSQL (Aiven for test, Neon Serverless for production)
 * **Documentation**: OpenAPI 3.0 via `drf-spectacular` (Swagger UI & ReDoc)
 * **Deployment Target**: Render
 
@@ -25,7 +25,7 @@ For the detailed specifications, please refer to:
 
 ### 1. Prerequisites
 * Python 3.10+
-* PostgreSQL client or local PostgreSQL instance (optional, Neon Database URL recommended)
+* PostgreSQL client or local PostgreSQL instance (optional; SQLite is used for local dev, Aiven/Neon for deployed environments)
 
 ### 2. Installation
 Clone the repository and set up a virtual environment:

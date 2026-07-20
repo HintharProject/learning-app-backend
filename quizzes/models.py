@@ -46,6 +46,7 @@ class StudentQuizAttempt(models.Model):
     total_questions = models.PositiveIntegerField(blank=True, null=True)
     passed = models.BooleanField(default=False)
     answers_submitted = models.JSONField(default=dict)
+    questions_snapshot = models.JSONField(default=list)
     
     created_at = models.DateTimeField(auto_now_add=True)
 

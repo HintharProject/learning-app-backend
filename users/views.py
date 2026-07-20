@@ -1,6 +1,7 @@
 import json
 import hmac
 import hashlib
+import base64
 import logging
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
@@ -117,8 +118,35 @@ def clerk_webhook(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
-    # Verify webhook signature (optional but recommended)
-    # For MVP, let's skip verification but note it should be added in production
+    # Verify webhook signature using Svix standard (Clerk uses Svix for webhooks)
+    webhook_secret = getattr(settings, 'CLERK_WEBHOOK_SECRET', '')
+    if webhook_secret:
+        svix_id = request.headers.get('svix-id', '')
+        svix_timestamp = request.headers.get('svix-timestamp', '')
+        svix_signature = request.headers.get('svix-signature', '')
+
+        if not svix_id or not svix_timestamp or not svix_signature:
+            logger.warning('Webhook signature verification failed: missing headers')
+            return JsonResponse({'error': 'Missing signature headers'}, status=401)
+
+        try:
+            body = request.body.decode('utf-8')
+            signed_content = f'{svix_id}.{svix_timestamp}.{body}'
+            secret_bytes = base64.b64decode(webhook_secret.split('_', 1)[-1])
+            expected_signature = hmac.new(
+                secret_bytes, signed_content.encode('utf-8'), hashlib.sha256
+            ).hexdigest()
+
+            # Constant-time comparison to prevent timing attacks
+            received_sigs = svix_signature.split()
+            if not any(hmac.compare_digest(expected_signature, sig.split(',', 1)[1])
+                       for sig in received_sigs if ',' in sig):
+                logger.warning('Webhook signature verification failed: invalid signature')
+                return JsonResponse({'error': 'Invalid signature'}, status=401)
+        except Exception as e:
+            logger.error(f'Webhook signature verification error: {str(e)}')
+            return JsonResponse({'error': 'Signature verification error'}, status=401)
+
     try:
         payload = json.loads(request.body.decode('utf-8'))
         event_type = payload.get('type')

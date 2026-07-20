@@ -146,16 +146,28 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
         attempt_number = (last_attempt.attempt_number + 1) if last_attempt else 1
 
         # total_questions is stored for attempt context
+        # Snapshot the quiz questions at attempt creation time so that later
+        # quiz edits do not affect review of historical attempts
         attempt = StudentQuizAttempt.objects.create(
             student=user,
             quiz=quiz,
             attempt_number=attempt_number,
             total_questions=len(quiz.questions) if isinstance(quiz.questions, list) else 0,
+            questions_snapshot=quiz.questions,
         )
         return Response(
             StudentQuizAttemptSerializer(attempt).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def retrieve(self, request, *args, **kwargs):
+        attempt = self.get_object()
+        data = StudentQuizAttemptSerializer(attempt).data
+        # If the attempt has been submitted, include the snapshotted quiz questions
+        # with is_correct so the student can review correct answers
+        if attempt.submitted_at:
+            data['quiz_questions'] = attempt.questions_snapshot
+        return Response(data)
 
     @extend_schema(
         summary='Submit the attempt',
@@ -171,7 +183,9 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
         if not isinstance(answers_submitted, dict):
             raise ValidationError('Answers must be a dictionary of question_id: option_id.')
 
-        quiz_questions = attempt.quiz.questions
+        # Use the snapshotted questions for scoring so that later quiz
+        # edits do not affect the grading of this historical attempt
+        quiz_questions = attempt.questions_snapshot
         score = 0
         total_questions = len(quiz_questions) if isinstance(quiz_questions, list) else 0
 

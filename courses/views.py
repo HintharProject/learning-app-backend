@@ -44,6 +44,32 @@ def _get_next_order(queryset):
     return (last.order + 1) if last else 1
 
 
+def _auto_complete_enrollment(student, course):
+    """
+    After a lesson is completed, check whether all lessons in the course
+    are completed. If so, transition the enrollment to COMPLETED.
+    """
+    from enrollments.models import Enrollment
+
+    lesson_ids = Lesson.objects.filter(
+        module__course=course
+    ).values_list('id', flat=True)
+    total = len(lesson_ids)
+    if total == 0:
+        return
+
+    completed = LessonProgress.objects.filter(
+        student=student,
+        lesson_id__in=lesson_ids,
+        completed=True,
+    ).count()
+
+    if completed >= total:
+        Enrollment.objects.filter(
+            student=student, course=course, status=Enrollment.STATUS_ACTIVE
+        ).update(status=Enrollment.STATUS_COMPLETED)
+
+
 def _apply_reorder(model_class, scope_field, scope_id, ordered_ids):
     """
     Atomically reorder items within a scope.
@@ -791,6 +817,7 @@ class LessonProgressViewSet(viewsets.GenericViewSet):
     )
     def partial_update(self, request, *args, **kwargs):
         progress = self.get_object()
+        lesson = progress.lesson
         serializer = LessonProgressUpdateSerializer(progress, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
@@ -805,6 +832,11 @@ class LessonProgressViewSet(viewsets.GenericViewSet):
                 progress.completed = True
 
         progress.save(update_fields=['video_progress', 'completed', 'updated_at'])
+
+        # Auto-complete enrollment if all course lessons are done
+        if progress.completed:
+            _auto_complete_enrollment(request.user, lesson.module.course)
+
         return Response(LessonProgressSerializer(progress).data)
 
     @extend_schema(

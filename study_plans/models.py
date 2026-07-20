@@ -73,6 +73,55 @@ class StudyPlanItem(models.Model):
         if count != 1:
             raise ValidationError('Exactly one of course, module, or lesson must be specified.')
 
+        # Prevent duplicate entries within the same study plan
+        existing = StudyPlanItem.objects.filter(study_plan=self.study_plan)
+        if self.pk:
+            existing = existing.exclude(pk=self.pk)
+
+        if self.course:
+            if existing.filter(course=self.course).exists():
+                raise ValidationError('This course is already in the study plan.')
+            # Hierarchy check: a Course and its child Modules/Lessons cannot coexist
+            child_modules = Module.objects.filter(course=self.course).values_list('id', flat=True)
+            child_lessons = Lesson.objects.filter(module__course=self.course).values_list('id', flat=True)
+            if existing.filter(module_id__in=child_modules).exists():
+                raise ValidationError(
+                    'This course cannot be added because one of its modules is already in the study plan.'
+                )
+            if existing.filter(lesson_id__in=child_lessons).exists():
+                raise ValidationError(
+                    'This course cannot be added because one of its lessons is already in the study plan.'
+                )
+
+        elif self.module:
+            if existing.filter(module=self.module).exists():
+                raise ValidationError('This module is already in the study plan.')
+            # Hierarchy check: a Module and its parent Course or child Lessons cannot coexist
+            if existing.filter(course=self.module.course).exists():
+                raise ValidationError(
+                    'This module cannot be added because its parent course is already in the study plan.'
+                )
+            child_lessons = Lesson.objects.filter(module=self.module).values_list('id', flat=True)
+            if existing.filter(lesson_id__in=child_lessons).exists():
+                raise ValidationError(
+                    'This module cannot be added because one of its lessons is already in the study plan.'
+                )
+
+        elif self.lesson:
+            if existing.filter(lesson=self.lesson).exists():
+                raise ValidationError('This lesson is already in the study plan.')
+            # Hierarchy check: a Lesson and its parent Course or Module cannot coexist
+            parent_module = self.lesson.module
+            if existing.filter(module=parent_module).exists():
+                raise ValidationError(
+                    'This lesson cannot be added because its parent module is already in the study plan.'
+                )
+            parent_course = parent_module.course
+            if existing.filter(course=parent_course).exists():
+                raise ValidationError(
+                    'This lesson cannot be added because its parent course is already in the study plan.'
+                )
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
