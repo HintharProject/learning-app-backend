@@ -121,10 +121,19 @@ DATABASES = {
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if origin.strip()]
 
+# Allow all origins in DEBUG mode for easier local frontend testing
+if DEBUG and not CORS_ALLOWED_ORIGINS:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+
+CORS_ALLOW_CREDENTIALS = True
+
 # Clerk Authentication Settings
 CLERK_PUBLISHABLE_KEY = os.getenv('CLERK_PUBLISHABLE_KEY', '')
 CLERK_SECRET_KEY = os.getenv('CLERK_SECRET_KEY', '')
 CLERK_JWT_PEM_PUBLIC_KEY = os.getenv('CLERK_JWT_PEM_PUBLIC_KEY', '').replace(r'\n', '\n')
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '')
 
 
 # Password validation
