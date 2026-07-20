@@ -1,5 +1,6 @@
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -195,7 +196,7 @@ class StudentQuizAttemptViewSet(viewsets.ModelViewSet):
             attempt.total_questions = total_questions
             attempt.passed = passed
             attempt.answers_submitted = answers_submitted
-            attempt.submitted_at = transaction.now()
+            attempt.submitted_at = timezone.now()
             attempt.save()
 
         return Response(StudentQuizAttemptSerializer(attempt).data)

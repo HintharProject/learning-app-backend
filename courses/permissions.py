@@ -84,7 +84,7 @@ class CanAddContentToCourse(permissions.BasePermission):
 def _resolve_course(obj):
     """Walk up the object hierarchy to find the parent Course."""
     from courses.models import Course, Module, Lesson, Resource
-    from quizzes.models import Quiz, Question, Option
+    from quizzes.models import Quiz
     if isinstance(obj, Course):
         return obj
     if isinstance(obj, Module):
@@ -95,8 +95,4 @@ def _resolve_course(obj):
         return obj.lesson.module.course
     if isinstance(obj, Quiz):
         return obj.lesson.module.course
-    if isinstance(obj, Question):
-        return obj.quiz.lesson.module.course
-    if isinstance(obj, Option):
-        return obj.question.quiz.lesson.module.course
     return None

@@ -142,3 +142,6 @@ Desktop.ini
 .idea/
 .vscode/
 .gemini/
+
+# Disposable test scripts
+test_endpoints.py

@@ -24,7 +24,7 @@ from courses.models import Course
         description='Get details of a specific enrollment.',
     ),
 )
-class EnrollmentViewSet(viewsets.GenericViewSet):
+class EnrollmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
     Student-facing enrollment management:
     - GET  /enrollments/         → list (student's own, admin sees all)
