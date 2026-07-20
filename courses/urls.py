@@ -23,9 +23,6 @@ router.register(r'lessons', LessonViewSet, basename='lesson')
 # /api/v1/resources/{id}/ — PATCH only
 router.register(r'resources', ResourceViewSet, basename='resource')
 
-# /api/v1/lesson-progress/
-router.register(r'lesson-progress', LessonProgressViewSet, basename='lesson-progress')
-
 urlpatterns = [
     # ── Nested routes ──────────────────────────────────────────────────────
     # GET  /api/v1/courses/{course_pk}/modules/
@@ -62,6 +59,20 @@ urlpatterns = [
         'lessons/<uuid:lesson_pk>/resources/',
         ResourceViewSet.as_view({'get': 'list', 'post': 'create'}),
         name='lesson-resources-list',
+    ),
+
+    # GET   /api/v1/lessons/{lesson_pk}/progress/
+    # PATCH /api/v1/lessons/{lesson_pk}/progress/
+    path(
+        'lessons/<uuid:lesson_pk>/progress/',
+        LessonProgressViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}),
+        name='lesson-progress',
+    ),
+    # POST  /api/v1/lessons/{lesson_pk}/progress/reset/
+    path(
+        'lessons/<uuid:lesson_pk>/progress/reset/',
+        LessonProgressViewSet.as_view({'post': 'reset'}),
+        name='lesson-progress-reset',
     ),
 
     # ── Router-generated flat routes ──────────────────────────────────────

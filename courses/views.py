@@ -1,8 +1,9 @@
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 
 from courses.models import Course, Module, Lesson, Resource, LessonProgress
@@ -30,7 +31,9 @@ from courses.permissions import (
     IsCourseOwnerOrAdmin,
     CanAddContentToCourse,
 )
-from users.permissions import IsAdmin
+from enrollments.models import Enrollment
+from enrollments.serializers import EnrollmentSerializer
+from users.permissions import IsAdmin, IsStudent
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -216,6 +219,155 @@ class CourseViewSet(viewsets.ModelViewSet):
         course.status = Course.STATUS_ARCHIVED
         course.save(update_fields=['status', 'updated_at'])
         return Response(CourseSerializer(course).data)
+
+    # ── Enrollment actions ────────────────────────────────────────────────
+
+    @extend_schema(
+        summary='Enroll in a course',
+        description='Create or reactivate an enrollment for the authenticated student in this course.',
+        request=None,
+        responses={200: EnrollmentSerializer, 201: EnrollmentSerializer},
+    )
+    @action(
+        detail=True, methods=['post'], url_path='enroll',
+        permission_classes=[permissions.IsAuthenticated, IsStudent],
+    )
+    def enroll(self, request, pk=None):
+        course = self.get_object()
+        if course.status != Course.STATUS_PUBLISHED:
+            raise ValidationError('Only published courses can be enrolled in.')
+
+        student = request.user
+
+        with transaction.atomic():
+            enrollment, created = Enrollment.objects.get_or_create(
+                student=student,
+                course=course,
+                defaults={'status': Enrollment.STATUS_ACTIVE},
+            )
+            if not created and enrollment.status != Enrollment.STATUS_ACTIVE:
+                enrollment.status = Enrollment.STATUS_ACTIVE
+                enrollment.save()
+
+        return Response(
+            EnrollmentSerializer(enrollment).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        summary='Check enrollment status',
+        description='Check the authenticated student\'s enrollment status for this course.',
+        responses={200: EnrollmentSerializer},
+    )
+    @action(
+        detail=True, methods=['get'], url_path='enrollment',
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def enrollment(self, request, pk=None):
+        course = self.get_object()
+        user = request.user
+        if user.role != 'STUDENT':
+            raise PermissionDenied('Only students have enrollment records.')
+        try:
+            enrollment = Enrollment.objects.get(student=user, course=course)
+        except Enrollment.DoesNotExist:
+            raise NotFound('You are not enrolled in this course.')
+        return Response(EnrollmentSerializer(enrollment).data)
+
+    # ── Learning progress actions ─────────────────────────────────────────
+
+    @extend_schema(
+        summary='Get course progress',
+        description='Returns derived course completion progress for the authenticated student.',
+        responses={200: dict},
+    )
+    @action(
+        detail=True, methods=['get'], url_path='progress',
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def progress(self, request, pk=None):
+        course = self.get_object()
+        user = request.user
+        if user.role != 'STUDENT':
+            raise PermissionDenied('Course progress is only available for students.')
+
+        # Verify enrollment
+        if not Enrollment.objects.filter(student=user, course=course, status=Enrollment.STATUS_ACTIVE).exists():
+            raise PermissionDenied('You must be actively enrolled to view course progress.')
+
+        modules = Module.objects.filter(course=course).prefetch_related('lessons')
+        total_lessons = 0
+        completed_lessons = 0
+
+        for module in modules:
+            lesson_ids = list(module.lessons.values_list('id', flat=True))
+            total_lessons += len(lesson_ids)
+            completed_lessons += LessonProgress.objects.filter(
+                student=user, lesson_id__in=lesson_ids, completed=True,
+            ).count()
+
+        percentage = round((completed_lessons / total_lessons) * 100, 1) if total_lessons > 0 else 0.0
+
+        return Response({
+            'course_id': str(course.id),
+            'course_title': course.title,
+            'total_lessons': total_lessons,
+            'completed_lessons': completed_lessons,
+            'percentage': percentage,
+        })
+
+    @extend_schema(
+        summary='Get learning path',
+        description='Returns all modules with calculated unlock status for the authenticated student.',
+        responses={200: dict},
+    )
+    @action(
+        detail=True, methods=['get'], url_path='learning-path',
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def learning_path(self, request, pk=None):
+        course = self.get_object()
+        user = request.user
+        if user.role != 'STUDENT':
+            raise PermissionDenied('The learning path is only relevant for students.')
+
+        if not Enrollment.objects.filter(student=user, course=course, status=Enrollment.STATUS_ACTIVE).exists():
+            raise PermissionDenied('You must be actively enrolled to view the learning path.')
+
+        modules = Module.objects.filter(course=course).order_by('order').prefetch_related('lessons')
+        previous_module_completed = True  # Module 1 is always unlocked
+        result = []
+
+        for module in modules:
+            is_unlocked = previous_module_completed
+
+            # Determine if this module is completed (all lessons completed)
+            lesson_ids = list(module.lessons.values_list('id', flat=True))
+            if lesson_ids:
+                completed_count = LessonProgress.objects.filter(
+                    student=user, lesson_id__in=lesson_ids, completed=True,
+                ).count()
+                is_completed = completed_count == len(lesson_ids)
+            else:
+                is_completed = False
+
+            result.append({
+                'id': str(module.id),
+                'title': module.title,
+                'description': module.description,
+                'order': module.order,
+                'unlocked': is_unlocked,
+                'completed': is_completed,
+                'lesson_count': len(lesson_ids),
+            })
+
+            previous_module_completed = is_completed
+
+        return Response({
+            'course_id': str(course.id),
+            'course_title': course.title,
+            'modules': result,
+        })
 
 
 # ── ModuleViewSet ─────────────────────────────────────────────────────────────
@@ -587,56 +739,93 @@ class ResourceViewSet(viewsets.ModelViewSet):
 # ── LessonProgressViewSet ───────────────────────────────────────────────────────
 
 @extend_schema_view(
-    list=extend_schema(
-        summary='List lesson progress for a student',
-        description='Returns all lesson progress records for the authenticated student.',
-    ),
     retrieve=extend_schema(
         summary='Retrieve lesson progress',
-        description='Get detailed progress for a specific lesson.',
-    ),
-    create=extend_schema(
-        summary='Start a lesson',
-        description='Marks a lesson as started by the student.',
+        description='Get progress for a specific lesson for the authenticated student.',
     ),
     partial_update=extend_schema(
         summary='Update lesson progress',
-        description='Mark a lesson as completed, update last accessed time.',
+        description='Report video progress and/or mark lesson as completed.',
     ),
     update=extend_schema(exclude=True),
     destroy=extend_schema(exclude=True),
 )
-class LessonProgressViewSet(viewsets.ModelViewSet):
+class LessonProgressViewSet(viewsets.GenericViewSet):
     """
-    Lesson progress tracking:
-    - GET  /lesson-progress/          → list (student's own progress)
-    - GET  /lesson-progress/{id}/     → retrieve
-    - POST /lesson-progress/          → create (start lesson)
-    - PATCH /lesson-progress/{id}/    → partial_update (mark completed, etc.)
+    Lesson progress tracking, nested under lessons:
+    - GET  /lessons/{lesson_pk}/progress/       → retrieve
+    - PATCH /lessons/{lesson_pk}/progress/      → partial_update
+    - POST /lessons/{lesson_pk}/progress/reset/ → reset
     """
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        if not user or not user.is_authenticated:
-            return LessonProgress.objects.none()
-        if user.role == 'ADMIN':
-            return LessonProgress.objects.all().select_related('student', 'lesson__module__course')
-        # Only students can have progress
-        return LessonProgress.objects.filter(student=user).select_related('student', 'lesson__module__course')
+    def _get_lesson(self):
+        lesson_pk = self.kwargs.get('lesson_pk')
+        try:
+            return Lesson.objects.select_related('module__course').get(pk=lesson_pk)
+        except Lesson.DoesNotExist:
+            raise NotFound('Lesson not found.')
 
-    def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'create', 'partial_update'):
-            return [permissions.IsAuthenticated()]
-        return [permissions.IsAuthenticated()]
-
-    def get_serializer_class(self):
-        if self.action == 'partial_update':
-            return LessonProgressUpdateSerializer
-        return LessonProgressSerializer
-
-    def perform_create(self, serializer):
+    def get_object(self):
+        """Get or create the LessonProgress record for this student+lesson."""
+        lesson = self._get_lesson()
         user = self.request.user
         if user.role != 'STUDENT':
             raise PermissionDenied('Only students can track lesson progress.')
-        serializer.save(student=user)
+        progress, _ = LessonProgress.objects.get_or_create(
+            student=user,
+            lesson=lesson,
+            defaults={'video_progress': 0.0, 'completed': False},
+        )
+        return progress
+
+    @extend_schema(responses={200: LessonProgressSerializer})
+    def retrieve(self, request, *args, **kwargs):
+        progress = self.get_object()
+        return Response(LessonProgressSerializer(progress).data)
+
+    @extend_schema(
+        request=LessonProgressUpdateSerializer,
+        responses={200: LessonProgressSerializer},
+    )
+    def partial_update(self, request, *args, **kwargs):
+        progress = self.get_object()
+        serializer = LessonProgressUpdateSerializer(progress, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        video_progress = serializer.validated_data.get('video_progress')
+        if video_progress is not None:
+            # Monotonic: never decrease progress
+            if video_progress < progress.video_progress:
+                raise ValidationError('Video progress cannot decrease.')
+            progress.video_progress = video_progress
+            # Auto-complete when >= 99% (business rule Domain 3)
+            if video_progress >= 0.99:
+                progress.completed = True
+
+        progress.save(update_fields=['video_progress', 'completed', 'updated_at'])
+        return Response(LessonProgressSerializer(progress).data)
+
+    @extend_schema(
+        summary='Reset lesson progress',
+        description='Reset progress for this lesson (sets completed=false, video_progress=0).',
+        request=None,
+        responses={200: LessonProgressSerializer},
+    )
+    @action(detail=False, methods=['post'], url_path='reset')
+    def reset(self, request, lesson_pk=None):
+        lesson = self._get_lesson()
+        user = request.user
+        if user.role != 'STUDENT':
+            raise PermissionDenied('Only students can reset lesson progress.')
+
+        try:
+            progress = LessonProgress.objects.get(student=user, lesson=lesson)
+            progress.video_progress = 0.0
+            progress.completed = False
+            progress.save(update_fields=['video_progress', 'completed', 'updated_at'])
+        except LessonProgress.DoesNotExist:
+            raise NotFound('No progress record found for this lesson.')
+
+        return Response(LessonProgressSerializer(progress).data)

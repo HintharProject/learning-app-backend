@@ -329,6 +329,9 @@ Base Path: `/api/v1/`
 * `DELETE /study-plan-items/{id}/` - Remove item from plan. (STUDENT)
 
 ### 6. Administrative Operations
-* `GET  /admin/courses/` - View all courses across lifecycle states. (ADMIN)
-* `GET  /admin/enrollments/` - Inspect enrollment records. (ADMIN)
-* `GET  /admin/users/` - Manage users and roles. (ADMIN)
+* `GET  /admin/enrollments/` - Inspect all enrollment records. (ADMIN)
+* `POST /admin/enrollments/` - Enroll a student administratively. (ADMIN)
+
+Note: Admin course listing and user management are covered by existing endpoints:
+* `GET /courses/` returns all courses for admins (role-filtered).
+* `GET /users/` is admin-only and returns all users.
