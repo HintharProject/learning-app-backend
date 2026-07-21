@@ -17,6 +17,13 @@ erDiagram
         datetime updated_at
     }
 
+    Tag {
+        string id PK
+        string name UK
+        string type "SUBJECT, STAGE, OTHERS"
+        datetime created_at
+    }
+
     Course {
         string id PK
         string title
@@ -141,6 +148,7 @@ erDiagram
     Lesson ||--o{ LessonProgress : "has progress"
     User ||--o{ StudentQuizAttempt : "takes"
     Quiz ||--o{ StudentQuizAttempt : "attempted by"
+    Course }o--o{ Tag : "tagged with"
 ```
 
 ---
@@ -233,9 +241,9 @@ erDiagram
 * **Creator Approval**:
   * Must be approved by an Admin (`is_creator_approved = true`) before creating, modifying, or publishing courses.
 * **Permissions Matrix**:
-  * `ADMIN`: Unrestricted authority, manages users, roles, can approve creators, override ownership.
-  * `CREATOR`: Manages owned courses, modules, lessons, quizzes. Cannot publish directly. Cannot access other creators' drafts or student history.
-  * `STUDENT`: Manages own enrollments, progress, attempts, and study plans. No content modification.
+  * `ADMIN`: Unrestricted authority, manages users, roles, can approve creators, override ownership. Can manage all Tags.
+  * `CREATOR`: Manages owned courses, modules, lessons, quizzes. Cannot publish directly. Cannot access other creators' drafts or student history. Can use existing tags, and create new tags (forced to `OTHERS` type).
+  * `STUDENT`: Manages own enrollments, progress, attempts, and study plans. No content modification. Can filter courses by tags.
 
 ### Domain 8 — Deletion & Data Integrity
 * **No Physical Deletions**:
@@ -275,11 +283,16 @@ Base Path: `/api/v1/`
 * `GET  /courses/` - List courses. Students see published; creators see owned; admins see all. (ADMIN, CREATOR, STUDENT)
 * `POST /courses/` - Create a new draft course. (CREATOR, ADMIN)
 * `GET  /courses/{id}/` - Retrieve course details. (ADMIN, CREATOR owner, STUDENT if published)
-* `PATCH /courses/{id}/` - Modify course info (subject to lifecycle limits). (ADMIN, CREATOR owner)
+* `PATCH /courses/{id}/` - Modify course info (subject to lifecycle limits, includes assigning tags). (ADMIN, CREATOR owner)
 * `POST /courses/{id}/submit-review/` - Submit draft course for publication review. (CREATOR owner)
 * `POST /courses/{id}/approve/` - Approve pending course publication. (ADMIN)
 * `POST /courses/{id}/reject/` - Return pending course to draft state. (ADMIN)
 * `POST /courses/{id}/archive/` - Archive a course. (ADMIN, CREATOR owner)
+
+#### Tags
+* `GET  /tags/` - List all tags (can be filtered by type). (ADMIN, CREATOR, STUDENT)
+* `POST /tags/` - Create a tag (Admin can specify type, Creators forced to OTHERS). (ADMIN, CREATOR)
+* `PATCH /tags/{id}/` - Update a tag. (ADMIN)
 
 #### Modules
 * `GET  /courses/{course_id}/modules/` - List modules in a course. (ADMIN, CREATOR owner, STUDENT)

@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 
-from courses.models import Course, Module, Lesson, Resource, LessonProgress
+from courses.models import Course, Module, Lesson, Resource, LessonProgress, Tag
 from courses.serializers import (
     CourseSerializer,
     CourseListSerializer,
@@ -25,6 +25,7 @@ from courses.serializers import (
     ReorderSerializer,
     LessonProgressSerializer,
     LessonProgressUpdateSerializer,
+    TagSerializer,
 )
 from courses.permissions import (
     IsAdminOrApprovedCreator,
@@ -92,6 +93,64 @@ def _apply_reorder(model_class, scope_field, scope_id, ordered_ids):
             model_class.objects.filter(id=item_id).update(order=new_order)
 
 
+# ── TagViewSet ────────────────────────────────────────────────────────────────
+
+@extend_schema_view(
+    list=extend_schema(
+        summary='List tags',
+        description='Returns all available tags. Can filter by type (e.g., ?type=SUBJECT).',
+        parameters=[
+            OpenApiParameter(name='type', description='Filter by tag type', required=False, type=str)
+        ]
+    ),
+    create=extend_schema(
+        summary='Create a new tag',
+        description='Admins can create any tag. Creators can only create OTHERS tags.',
+    ),
+    partial_update=extend_schema(
+        summary='Update a tag',
+        description='Admins only. Can be used to promote OTHERS tags to SUBJECT/STAGE.',
+    ),
+    update=extend_schema(exclude=True),
+    retrieve=extend_schema(exclude=True),
+    destroy=extend_schema(exclude=True),
+)
+class TagViewSet(viewsets.ModelViewSet):
+    """
+    Tag management:
+    - GET  /tags/          → list (everyone)
+    - POST /tags/          → create (Admins & Creators)
+    - PATCH /tags/{id}/    → partial update (Admins only)
+    """
+    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    serializer_class = TagSerializer
+
+    def get_queryset(self):
+        qs = Tag.objects.all()
+        type_param = self.request.query_params.get('type')
+        if type_param:
+            qs = qs.filter(type=type_param.upper())
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'list':
+            return [permissions.IsAuthenticated()]
+        if self.action == 'create':
+            return [IsAdminOrApprovedCreator()]
+        if self.action == 'partial_update':
+            return [IsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role == 'CREATOR':
+            # Creators are forced to create OTHERS tags
+            serializer.save(type=Tag.TYPE_OTHERS)
+        else:
+            # Admins can set type
+            serializer.save()
+
+
 # ── CourseViewSet ─────────────────────────────────────────────────────────────
 
 @extend_schema_view(
@@ -136,12 +195,24 @@ class CourseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Course.objects.none()
+            
         if user.role == 'ADMIN':
-            return Course.objects.all().select_related('creator')
-        if user.role == 'CREATOR':
-            return Course.objects.filter(creator=user).select_related('creator')
-        # STUDENT: only published courses
-        return Course.objects.filter(status=Course.STATUS_PUBLISHED).select_related('creator')
+            qs = Course.objects.all()
+        elif user.role == 'CREATOR':
+            qs = Course.objects.filter(creator=user)
+        else:
+            # STUDENT: only published courses
+            qs = Course.objects.filter(status=Course.STATUS_PUBLISHED)
+            
+        qs = qs.select_related('creator').prefetch_related('tags')
+        
+        tags_param = self.request.query_params.get('tags')
+        if tags_param:
+            tag_ids = [t.strip() for t in tags_param.split(',') if t.strip()]
+            for t_id in tag_ids:
+                qs = qs.filter(tags__id=t_id)
+                
+        return qs
 
     def get_permissions(self):
         if self.action == 'list':

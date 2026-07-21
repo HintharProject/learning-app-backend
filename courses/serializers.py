@@ -1,7 +1,16 @@
 
 from rest_framework import serializers
 from django.db import transaction
-from courses.models import Course, Module, Lesson, Resource, LessonProgress
+from courses.models import Course, Module, Lesson, Resource, LessonProgress, Tag
+
+
+# ── Tag Serializers ───────────────────────────────────────────────────────────
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'type', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 # ── Resource Serializers ──────────────────────────────────────────────────────
@@ -248,6 +257,10 @@ class CourseSerializer(serializers.ModelSerializer):
     modules = ModuleListSerializer(many=True, read_only=True)
     creator_email = serializers.EmailField(source='creator.email', read_only=True)
     creator_name = serializers.CharField(source='creator.full_name', read_only=True)
+    tags = TagSerializer(many=True, read_only=True)
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(), many=True, source='tags', required=False, write_only=True
+    )
 
     class Meta:
         model = Course
@@ -261,6 +274,8 @@ class CourseSerializer(serializers.ModelSerializer):
             'creator_email',
             'creator_name',
             'status',
+            'tags',
+            'tag_ids',
             'modules',
             'created_at',
             'updated_at',
@@ -272,6 +287,7 @@ class CourseSerializer(serializers.ModelSerializer):
             'creator_email',
             'creator_name',
             'status',
+            'tags',
             'modules',
             'created_at',
             'updated_at',
@@ -283,6 +299,7 @@ class CourseListSerializer(serializers.ModelSerializer):
     creator_email = serializers.EmailField(source='creator.email', read_only=True)
     creator_name = serializers.CharField(source='creator.full_name', read_only=True)
     module_count = serializers.SerializerMethodField()
+    tags = TagSerializer(many=True, read_only=True)
 
     class Meta:
         model = Course
@@ -296,6 +313,7 @@ class CourseListSerializer(serializers.ModelSerializer):
             'creator_email',
             'creator_name',
             'status',
+            'tags',
             'module_count',
             'created_at',
             'updated_at',
@@ -311,6 +329,9 @@ class CourseCreateSerializer(serializers.ModelSerializer):
     Serializer for creating a new Course (always starts as DRAFT).
     Creator is injected from the request user in the view.
     """
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(), many=True, source='tags', required=False, write_only=True
+    )
 
     class Meta:
         model = Course
@@ -321,6 +342,7 @@ class CourseCreateSerializer(serializers.ModelSerializer):
             'cover_image',
             'slug',
             'status',
+            'tag_ids',
             'created_at',
             'updated_at',
         ]
@@ -332,6 +354,9 @@ class CourseUpdateSerializer(serializers.ModelSerializer):
     Serializer for patching a Course.
     Post-publication: title and description are locked.
     """
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(), many=True, source='tags', required=False, write_only=True
+    )
 
     class Meta:
         model = Course
@@ -342,6 +367,7 @@ class CourseUpdateSerializer(serializers.ModelSerializer):
             'cover_image',
             'slug',
             'status',
+            'tag_ids',
             'created_at',
             'updated_at',
         ]

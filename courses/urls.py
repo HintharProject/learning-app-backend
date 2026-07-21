@@ -7,12 +7,16 @@ from courses.views import (
     LessonViewSet,
     ResourceViewSet,
     LessonProgressViewSet,
+    TagViewSet,
 )
 
 router = DefaultRouter()
 
 # /api/v1/courses/
 router.register(r'courses', CourseViewSet, basename='course')
+
+# /api/v1/tags/
+router.register(r'tags', TagViewSet, basename='tag')
 
 # /api/v1/modules/{id}/ — standalone PATCH only
 router.register(r'modules', ModuleDetailViewSet, basename='module-detail')
